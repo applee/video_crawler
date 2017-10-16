@@ -1,6 +1,5 @@
 package rules
 
-// 基础包
 import (
 	"fmt"
 	"strconv"
@@ -18,7 +17,7 @@ const (
 	Million  = 100000000
 )
 
-var targets = []string{
+var TXVideoChannels = []string{
 	"http://v.qq.com/x/list/movie",
 	"http://v.qq.com/x/list/tv",
 	"http://v.qq.com/x/list/variety",
@@ -49,7 +48,7 @@ var TXVideo = &spider.Spider{
 	EnableCookie: false,
 	RuleTree: &spider.RuleTree{
 		Root: func(ctx *spider.Context) {
-			for index, url := range targets {
+			for index, url := range TXVideoChannels {
 				ctx.AddQueue(&request.Request{
 					Url:  url,
 					Rule: "pages",
@@ -78,7 +77,7 @@ var TXVideo = &spider.Spider{
 								"channel": channel,
 							},
 						})
-						time.Sleep(time.Second * 10)
+						time.Sleep(time.Second * 20)
 						// ctx.SetTimer(fmt.Sprintf("%d_%d", channel, loop[0]), time.Minute*3, nil)
 					}
 					return nil
@@ -91,11 +90,12 @@ var TXVideo = &spider.Spider{
 						logs.Log.Critical("[消息提示：| 任务：%v | KEYIN：%v | 规则：%v] 没有抓取到任何数据！!!\n", ctx.GetName(), ctx.GetKeyin(), ctx.GetRuleName())
 						return
 					}
-					logs.Log.Informational("channel: %s, totalPages: %d", targets[ctx.GetTemp("channel", 0).(int)], total)
+					logs.Log.Informational("channel: %s, totalPages: %d", TXVideoChannels[ctx.GetTemp("channel", 0).(int)], total)
 					ctx.Aid(map[string]interface{}{
-						"loop": [2]int{0, total},
+						"loop": [2]int{1, total},
 						"Rule": "list",
 					})
+					ctx.Parse("list")
 				},
 			},
 			"list": {
@@ -115,14 +115,14 @@ var TXVideo = &spider.Spider{
 							ctx.SetTemp("vip", vip)
 							ctx.AddQueue(&request.Request{
 								Url:  url,
-								Rule: "cover",
+								Rule: "play",
 								Temp: ctx.CopyTemps(),
 							})
 						}
 					})
 				},
 			},
-			"cover": {
+			"play": {
 				ParseFunc: func(ctx *spider.Context) {
 					query := ctx.GetDom()
 					url, ok := query.Find(".mod_player_side .player_title a").Attr("href")
@@ -140,7 +140,7 @@ var TXVideo = &spider.Spider{
 							}
 						}
 						ctx.SetTemp("play_count", int64(playCount))
-						ctx.SetTemp("cover_url", ctx.GetUrl())
+						ctx.SetTemp("play_url", ctx.GetUrl())
 						ctx.AddQueue(&request.Request{
 							Url:  "https://" + ctx.GetHost() + url,
 							Rule: "detail",
@@ -159,9 +159,10 @@ var TXVideo = &spider.Spider{
 					"release_at",
 					"score",
 					"vip",
+					"date",
 					"crawl_at",
 					"detail_url",
-					"cover_url",
+					"play_url",
 				},
 				ParseFunc: func(ctx *spider.Context) {
 					query := ctx.GetDom()
@@ -192,9 +193,10 @@ var TXVideo = &spider.Spider{
 						"release_at":    releaseAt,
 						"score":         score,
 						"vip":           ctx.GetTemp("vip", 0),
+						"date":          StartDate,
 						"crawl_at":      time.Now().Unix(),
 						"detail_url":    ctx.GetUrl(),
-						"cover_url":     ctx.GetTemp("cover_url", ""),
+						"play_url":      ctx.GetTemp("play_url", ""),
 					})
 				},
 			},

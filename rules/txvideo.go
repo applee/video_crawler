@@ -140,7 +140,7 @@ var TXVideo = &spider.Spider{
 							}
 						}
 						ctx.SetTemp("play_count", int64(playCount))
-						ctx.SetTemp("play_url", ctx.GetUrl())
+						ctx.SetTemp("play_url", cutURL(ctx.GetUrl()))
 						ctx.AddQueue(&request.Request{
 							Url:  "https://" + ctx.GetHost() + url,
 							Rule: "detail",
@@ -195,7 +195,7 @@ var TXVideo = &spider.Spider{
 						"vip":           ctx.GetTemp("vip", 0),
 						"date":          StartDate,
 						"crawl_at":      time.Now().Unix(),
-						"detail_url":    ctx.GetUrl(),
+						"detail_url":    cutURL(ctx.GetUrl()),
 						"play_url":      ctx.GetTemp("play_url", ""),
 					})
 				},

@@ -134,7 +134,7 @@ var Youku = &spider.Spider{
 					query := ctx.GetDom()
 					url, ok := query.Find(".base .base_info .desc-link").Attr("href")
 					if ok && url != "" {
-						ctx.SetTemp("play_url", ctx.GetUrl())
+						ctx.SetTemp("play_url", cutURL(ctx.GetUrl()))
 						ctx.AddQueue(&request.Request{
 							Url:  parseUrl(url),
 							Rule: "detail",
@@ -213,7 +213,7 @@ var Youku = &spider.Spider{
 						"vip":           vip,
 						"date":          StartDate,
 						"crawl_at":      time.Now().Unix(),
-						"detail_url":    ctx.GetUrl(),
+						"detail_url":    cutURL(ctx.GetUrl()),
 						"play_url":      ctx.GetTemp("play_url", ""),
 					})
 				},

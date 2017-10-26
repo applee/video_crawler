@@ -1,7 +1,10 @@
 package rules
 
 import (
+	"encoding/base64"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -13,17 +16,20 @@ import (
 )
 
 const (
-	Thousand = 1000
-	Million  = 100000000
+	TenThousand = 10000
+	Million     = 100000000
 )
 
-var TXVideoChannels = []string{
-	"http://v.qq.com/x/list/movie",
-	"http://v.qq.com/x/list/tv",
-	"http://v.qq.com/x/list/variety",
-	"http://v.qq.com/x/list/cartoon",
-	"http://v.qq.com/x/list/children",
-}
+var (
+	TXVideoChannels = []string{
+		"http://v.qq.com/x/list/movie",
+		"http://v.qq.com/x/list/tv",
+		"http://v.qq.com/x/list/variety",
+		"http://v.qq.com/x/list/cartoon",
+		"http://v.qq.com/x/list/children",
+	}
+	TXVideoVIPActivityURL = "http://film.qq.com/vip/activity_v2.html"
+)
 
 func init() {
 	TXVideo.Register()
@@ -33,21 +39,23 @@ func TXVideoNamespace(*spider.Spider) string {
 	return "tx"
 }
 
-func TXVideoSubNamespace(*spider.Spider, map[string]interface{}) string {
-	return "videos"
-}
-
 var TXVideo = &spider.Spider{
 	Name:            "腾讯视频详情",
 	Description:     "腾讯视频详情[v.qq.com/x/list]",
 	Namespace:       TXVideoNamespace,
-	SubNamespace:    TXVideoSubNamespace,
 	NotDefaultField: true,
 	// Pausetime:    300,
 	// Keyin:        KEYIN,
 	EnableCookie: false,
 	RuleTree: &spider.RuleTree{
 		Root: func(ctx *spider.Context) {
+			// VIP activity
+			ctx.AddQueue(&request.Request{
+				Url:          TXVideoVIPActivityURL,
+				Rule:         "vip_activities",
+				Priority:     3,
+				DownloaderID: 1,
+			})
 			for index, url := range TXVideoChannels {
 				ctx.AddQueue(&request.Request{
 					Url:  url,
@@ -56,12 +64,79 @@ var TXVideo = &spider.Spider{
 						"baseUrl": url,
 						"channel": index,
 					},
+					Priority: 0,
 				})
-				time.Sleep(time.Minute * 5)
-				// ctx.SetTimer(strconv.Itoa(index), time.Minute*3, nil)
 			}
 		},
 		Trunk: map[string]*spider.Rule{
+			"vip_activities": {
+				// ItemFields: []string{
+				// "title",
+				// "period",
+				// "status",
+				// "link",
+				// "thumb",
+				// "date",
+				// },
+				ParseFunc: func(ctx *spider.Context) {
+					query := ctx.GetDom()
+					query.Find("#vip-act > .mod_activity").Each(func(i int, s *goquery.Selection) {
+						var thumb string
+						thumbURL, ok := s.Find(".activity_cover a img").Attr("src")
+						if ok {
+							resp, err := http.Get(thumbURL)
+							if err != nil {
+								return
+							}
+							defer resp.Body.Close()
+							body, err := ioutil.ReadAll(resp.Body)
+							if err != nil {
+								return
+							}
+							thumb = base64.StdEncoding.EncodeToString(body)
+						}
+						title := s.Find(".activity_info .title").Text()
+						txt := s.Find(".activity_info .txt")
+						desc := strings.TrimSpace(txt.First().Text())
+
+						// period
+						var start, end int64
+						period := txt.Last().Text()
+						temp := strings.Split(period, "：")
+						if len(temp) == 2 {
+							period = temp[1]
+							temp = strings.Split(period, "-")
+							if len(temp) == 2 {
+
+							}
+							startStr := temp[0]
+							endStr := temp[1]
+							startDate, _ := time.Parse("2006年01月02日", startStr)
+							endDate, _ := time.Parse("2006年01月02日", endStr)
+							start = startDate.Unix()
+							end = endDate.Unix()
+						}
+
+						linkItem := s.Find(".activity_info > a.btn_check_event")
+						link, _ := linkItem.Attr("href")
+						isActive := 0
+						if linkItem.HasClass("ended") {
+							isActive = 1
+						}
+						ctx.Output(map[string]interface{}{
+							"title":     title,
+							"desc":      desc,
+							"start":     start,
+							"end":       end,
+							"thumb":     thumb,
+							"link":      link,
+							"is_active": isActive,
+							"date":      StartDate,
+							"crawl_at":  time.Now().Unix(),
+						})
+					})
+				},
+			},
 			"pages": {
 				AidFunc: func(ctx *spider.Context, aid map[string]interface{}) interface{} {
 					baseUrl := ctx.GetTemp("baseUrl", "").(string)
@@ -76,9 +151,8 @@ var TXVideo = &spider.Spider{
 							Temp: map[string]interface{}{
 								"channel": channel,
 							},
+							Priority: 1,
 						})
-						time.Sleep(time.Second * 20)
-						// ctx.SetTimer(fmt.Sprintf("%d_%d", channel, loop[0]), time.Minute*3, nil)
 					}
 					return nil
 				},
@@ -103,20 +177,13 @@ var TXVideo = &spider.Spider{
 					query := ctx.GetDom()
 					query.Find(".figures_list li>a.figure").Each(func(i int, s *goquery.Selection) {
 						if url, ok := s.Attr("href"); ok {
-							var vip int
-							vipText, ok := s.Find(".mark_v img").Attr("alt")
-							if ok {
-								if vipText == "VIP" {
-									vip = 1
-								} else if vipText == "付费" {
-									vip = 2
-								}
-							}
-							ctx.SetTemp("vip", vip)
+							mark, ok := s.Find(".mark_v img").Attr("alt")
+							ctx.SetTemp("mark", mark)
 							ctx.AddQueue(&request.Request{
-								Url:  url,
-								Rule: "play",
-								Temp: ctx.CopyTemps(),
+								Url:      url,
+								Rule:     "play",
+								Temp:     ctx.CopyTemps(),
+								Priority: 2,
 							})
 						}
 					})
@@ -132,24 +199,29 @@ var TXVideo = &spider.Spider{
 						if playCountText != "" {
 							r := []rune(playCountText)
 							unit := string(r[len(r)-1:])
-							playCount, _ = strconv.ParseFloat(string(r[:len(r)-1]), 64)
-							if unit == "亿" {
-								playCount *= Million
-							} else if unit == "万" {
-								playCount *= 10 * Thousand
+							if unit == "亿" || unit == "万" {
+								playCount, _ = strconv.ParseFloat(string(r[:len(r)-1]), 64)
+								if unit == "亿" {
+									playCount *= Million
+								} else if unit == "万" {
+									playCount *= TenThousand
+								}
+							} else {
+								playCount, _ = strconv.ParseFloat(playCountText, 64)
 							}
 						}
 						ctx.SetTemp("play_count", int64(playCount))
 						ctx.SetTemp("play_url", cutURL(ctx.GetUrl()))
 						ctx.AddQueue(&request.Request{
-							Url:  "https://" + ctx.GetHost() + url,
-							Rule: "detail",
-							Temp: ctx.CopyTemps(),
+							Url:      "https://" + ctx.GetHost() + url,
+							Rule:     "videos",
+							Temp:     ctx.CopyTemps(),
+							Priority: 3,
 						})
 					}
 				},
 			},
-			"detail": {
+			"videos": {
 				ItemFields: []string{
 					"name",
 					"channel",
@@ -158,7 +230,7 @@ var TXVideo = &spider.Spider{
 					"tags",
 					"release_at",
 					"score",
-					"vip",
+					"mark",
 					"date",
 					"crawl_at",
 					"detail_url",
@@ -171,7 +243,7 @@ var TXVideo = &spider.Spider{
 					var releaseAt string
 					query.Find(".video_type .type_item").EachWithBreak(func(n int, s *goquery.Selection) bool {
 						title := s.Children().First().Text()
-						if title == "出品时间:" || title == "上映时间:" {
+						if title == "出品时间:" || title == "上映时间:" || title == "首播时间:" {
 							releaseAt = s.Children().Last().Text()
 							return false
 						}
@@ -192,7 +264,7 @@ var TXVideo = &spider.Spider{
 						"tags":          strings.Join(tags, ","),
 						"release_at":    releaseAt,
 						"score":         score,
-						"vip":           ctx.GetTemp("vip", 0),
+						"mark":          ctx.GetTemp("mark", 0),
 						"date":          StartDate,
 						"crawl_at":      time.Now().Unix(),
 						"detail_url":    cutURL(ctx.GetUrl()),

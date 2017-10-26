@@ -152,7 +152,7 @@ var Youku = &spider.Spider{
 					"tags",
 					"release_at",
 					"score",
-					"vip",
+					"mark",
 					"date",
 					"crawl_at",
 					"detail_url",
@@ -161,20 +161,12 @@ var Youku = &spider.Spider{
 				ParseFunc: func(ctx *spider.Context) {
 					query := ctx.GetDom()
 					var (
-						vip, playCnt, commentCnt int
-						score                    float64
-						releaseAt                string
-						tags                     []string
+						playCnt, commentCnt int
+						score               float64
+						mark, releaseAt     string
+						tags                []string
 					)
-					vipClass, ok := query.Find(".p-thumb .p-thumb-tagrt span").
-						Attr("class")
-					if ok {
-						if vipClass == "vip-free" {
-							vip = 1
-						} else if vipClass == "vip-ticket" {
-							vip = 2
-						}
-					}
+					mark = query.Find(".p-thumb .p-thumb-tagrt span").Text()
 					query.Find(".p-base > ul > li").Each(
 						func(n int, s *goquery.Selection) {
 							if s.HasClass("p-score") {
@@ -210,7 +202,7 @@ var Youku = &spider.Spider{
 						"tags":          strings.Join(tags, ","),
 						"release_at":    releaseAt,
 						"score":         score,
-						"vip":           vip,
+						"mark":          mark,
 						"date":          StartDate,
 						"crawl_at":      time.Now().Unix(),
 						"detail_url":    cutURL(ctx.GetUrl()),

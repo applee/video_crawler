@@ -178,7 +178,9 @@ var TXVideo = &spider.Spider{
 					query.Find(".figures_list li>a.figure").Each(func(i int, s *goquery.Selection) {
 						if url, ok := s.Attr("href"); ok {
 							mark, ok := s.Find(".mark_v img").Attr("alt")
-							ctx.SetTemp("mark", mark)
+							if ok {
+								ctx.SetTemp("mark", mark)
+							}
 							ctx.AddQueue(&request.Request{
 								Url:      url,
 								Rule:     "play",
